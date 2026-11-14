@@ -212,25 +212,32 @@ function render(){
     body.textContent = item.content;
     div.appendChild(body);
 
-    // 操作按钮：最后一条 AI 消息 → 重试 + 继续；用户消息 → 修改
+    // 操作按钮：用户消息 → 修改；AI 消息 → 修改；最后一条 AI 额外加重试+继续
     const actions = document.createElement("div");
     actions.className = "msg-actions";
     if(!selecting){
       if(item.role === "user"){
-        actions.innerHTML = "";
         const b = document.createElement("button");
         b.textContent = "修改";
-        b.onclick = (e)=>{ e.stopPropagation(); startEdit(idx, div, body); };
+        b.onclick = (e)=>{ e.stopPropagation(); startEdit(idx, div, body, true); };
         actions.appendChild(b);
-      } else if(item.role === "assistant" && idx === history.length - 1){
-        const r = document.createElement("button");
-        r.textContent = "重试";
-        r.onclick = ()=>retryLast();
-        const c = document.createElement("button");
-        c.textContent = "继续";
-        c.onclick = ()=>continueLast();
-        actions.appendChild(r);
-        actions.appendChild(c);
+      } else if(item.role === "assistant"){
+        // 所有 AI 消息都能修改
+        const b = document.createElement("button");
+        b.textContent = "修改";
+        b.onclick = (e)=>{ e.stopPropagation(); startEdit(idx, div, body, false); };
+        actions.appendChild(b);
+        // 最后一条 AI 额外加 重试 + 继续
+        if(idx === history.length - 1){
+          const r = document.createElement("button");
+          r.textContent = "重试";
+          r.onclick = ()=>retryLast();
+          const c = document.createElement("button");
+          c.textContent = "继续";
+          c.onclick = ()=>continueLast();
+          actions.appendChild(r);
+          actions.appendChild(c);
+        }
       }
     }
     div.appendChild(actions);
@@ -254,8 +261,8 @@ function render(){
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-// ===== 修改（编辑用户消息，截断后续历史） =====
-function startEdit(idx, div, bodyEl){
+// ===== 修改（编辑任意消息，截断后续历史） =====
+function startEdit(idx, div, bodyEl, isUser){
   const old = history[idx].content;
   const ta = document.createElement("textarea");
   ta.value = old;
@@ -263,7 +270,8 @@ function startEdit(idx, div, bodyEl){
   bodyEl.appendChild(ta);
   const btns = document.createElement("div");
   btns.className = "edit-btns";
-  const save = document.createElement("button"); save.className="edit-save"; save.textContent="保存并重发";
+  const save = document.createElement("button"); save.className="edit-save";
+  save.textContent = isUser ? "保存并重发" : "保存修改";
   const cancel = document.createElement("button"); cancel.className="edit-cancel"; cancel.textContent="取消";
   btns.appendChild(save); btns.appendChild(cancel);
   bodyEl.appendChild(btns);
@@ -273,12 +281,14 @@ function startEdit(idx, div, bodyEl){
   save.onclick = ()=>{
     const newText = ta.value.trim();
     if(!newText){ render(); return; }
-    // 截断到 idx（含），替换该条 user 消息，丢弃之后所有 assistant/user
+    // 截断到 idx（含），替换这条消息，丢弃之后所有记录
+    const role = history[idx].role;
     history = history.slice(0, idx);
-    history.push({role:"user", content:newText});
+    history.push({role:role, content:newText});
     persist();
     render();
-    callAPI(false);
+    // 只有改的是用户消息才自动重发；改 AI 消息只是改写记忆，等用户下一句
+    if(isUser) callAPI(false);
   };
 }
 
@@ -326,9 +336,9 @@ async function callAPI(isContinue){
   // 用于请求的消息副本
   let reqMsgs = msgs.concat(history);
   if(isContinue){
-    // 在末尾加一条临时 user 指令让它继续，但不写进 history
+    // 续写：messages 直接以 assistant 结尾，模型会接着这条 assistant 继续生成，
+    // 不再追加 user 消息，避免它当成新问题重新回答。
     reqMsgs = msgs.concat(history);
-    reqMsgs.push({role:"user", content:"（请不要重复上文，直接接着你刚才最后一句话继续往下说。）"});
   }
 
   // 创建/追加 AI 气泡
@@ -346,7 +356,12 @@ async function callAPI(isContinue){
     chatBox.appendChild(aiDiv);
   }
   const bodyEl = aiDiv.querySelector(".body");
-  bodyEl.innerHTML = '<span class="typing"></span>';
+  if(isContinue){
+    // 续写时保留原文，末尾加个闪烁点提示正在生成
+    bodyEl.innerHTML = history[history.length-1].content + '\n<span class="typing"></span>';
+  } else {
+    bodyEl.innerHTML = '<span class="typing"></span>';
+  }
 
   try{
     const resp = await fetch(config.baseUrl.replace(/\/+$/,"") + "/chat/completions", {
