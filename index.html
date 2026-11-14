@@ -11,8 +11,8 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 .title{font-size:17px;font-weight:600}
 .header-right{display:flex;gap:10px;align-items:center}
 #status{font-size:13px;color:#70c990}
-#clearChatBtn{background:#2b303b;border:none;color:#eee;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:15px}
-#clearChatBtn:hover{background:#383f4e}
+#toggleSettingBtn,#clearChatBtn{background:#2b303b;border:none;color:#eee;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:15px}
+#toggleSettingBtn:hover,#clearChatBtn:hover{background:#383f4e}
 .container{flex:1;display:flex;overflow:hidden}
 .chat-wrap{flex:1;display:flex;flex-direction:column}
 #chatBox{flex:1;padding:16px;overflow-y:auto;gap:14px;display:flex;flex-direction:column}
@@ -24,8 +24,16 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 #msgInput{flex:1;background:#272c38;border:1px solid #383f4e;color:#eee;border-radius:8px;padding:10px 12px;outline:none;font-size:15px}
 #sendBtn{background:#2584b8;border:none;color:white;padding:0 16px;border-radius:8px;cursor:pointer}
 #sendBtn:disabled{background:#2b485c;cursor:not-allowed}
-/* 底部设置面板 */
-.setting-panel{border-top:1px solid #2b303b;padding:14px;background:#1a1e28}
+/* 设置面板，默认隐藏 */
+.setting-panel{
+    border-top:1px solid #2b303b;
+    padding:14px;
+    background:#1a1e28;
+    display:none;
+}
+.setting-panel.show{
+    display:block;
+}
 .setting-panel h4{margin-bottom:10px;color:#c0c5ce}
 .form-item{margin-bottom:10px}
 .form-item label{display:block;margin-bottom:3px;font-size:13px;color:#b0b6c2}
@@ -39,6 +47,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 <div class="title">PERSONA · 自定义人格AI聊天</div>
 <div class="header-right">
 <span id="status">未连接</span>
+<button id="toggleSettingBtn">⚙ 设置</button>
 <button id="clearChatBtn">清空对话</button>
 </div>
 </header>
@@ -49,8 +58,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:14p
 <input id="msgInput" placeholder="说点什么... (Enter发送，Shift+Enter换行)">
 <button id="sendBtn">发送</button>
 </div>
-<!-- 底部设置，直接可见，不用弹窗 -->
-<div class="setting-panel">
+<div class="setting-panel" id="settingPanel">
 <h4>接口 & 人格配置</h4>
 <div class="form-item">
 <label>Base URL</label>
@@ -93,6 +101,8 @@ const personaText = $("#personaText");
 const saveBottom = $("#saveBottom");
 const clearChatBtn = $("#clearChatBtn");
 const statusText = $("#status");
+const toggleSettingBtn = $("#toggleSettingBtn");
+const settingPanel = $("#settingPanel");
 
 const STORAGE_KEYS = {
     config: "persona_ai_config",
@@ -135,6 +145,11 @@ function fillSettingForm(){
 }
 fillSettingForm();
 
+// 切换展开/收起设置面板
+toggleSettingBtn.onclick = ()=>{
+    settingPanel.classList.toggle("show");
+};
+
 saveBottom.onclick = ()=>{
     config.baseUrl = baseUrlInput.value.trim();
     config.apiKey = apiKeyInput.value.trim();
@@ -143,14 +158,14 @@ saveBottom.onclick = ()=>{
     localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(config));
     statusText.textContent = "已连接";
     alert("配置保存成功！");
-}
+};
 
 clearChatBtn.onclick = ()=>{
     if(!confirm("确定清空全部聊天记录吗？")) return;
     chatHistory = [];
     localStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(chatHistory));
     renderChat();
-}
+};
 
 function pushMsg(role, content){
     chatHistory.push({role,content});
