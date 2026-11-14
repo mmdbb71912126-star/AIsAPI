@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PERSONA · 自定义人格AI聊天</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif}
+body{background:#12151c;color:#e8e8e8;height:100vh;display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#1a1e28;border-bottom:1px solid #2b303b}
+.title{font-size:17px;font-weight:600}
+.header-right{display:flex;gap:10px;align-items:center}
+#status{font-size:13px;color:#70c990}
+#clearChatBtn{background:#2b303b;border:none;color:#eee;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:15px}
+#clearChatBtn:hover{background:#383f4e}
+.container{flex:1;display:flex;overflow:hidden}
+.chat-wrap{flex:1;display:flex;flex-direction:column}
+#chatBox{flex:1;padding:16px;overflow-y:auto;gap:14px;display:flex;flex-direction:column}
+.msg{max-width:85%;padding:10px 14px;border-radius:10px;white-space:pre-wrap;line-height:1.55}
+.user-msg{background:#254b78;align-self:flex-end}
+.ai-msg{background:#272c38;align-self:flex-start}
+.error-msg{background:#502428;color:#ffb8b8;align-self:flex-start}
+.input-area{display:flex;padding:12px 16px;gap:10px;border-top:1px solid #2b303b;background:#1a1e28}
+#msgInput{flex:1;background:#272c38;border:1px solid #383f4e;color:#eee;border-radius:8px;padding:10px 12px;outline:none;font-size:15px}
+#sendBtn{background:#2584b8;border:none;color:white;padding:0 16px;border-radius:8px;cursor:pointer}
+#sendBtn:disabled{background:#2b485c;cursor:not-allowed}
+/* 底部设置面板 */
+.setting-panel{border-top:1px solid #2b303b;padding:14px;background:#1a1e28}
+.setting-panel h4{margin-bottom:10px;color:#c0c5ce}
+.form-item{margin-bottom:10px}
+.form-item label{display:block;margin-bottom:3px;font-size:13px;color:#b0b6c2}
+.form-item textarea,.form-item input{width:100%;background:#272c38;border:1px solid #383f4e;color:#eee;border-radius:6px;padding:8px;font-size:14px}
+.form-item textarea{min-height:110px;resize:vertical}
+#saveBottom{margin-top:8px;padding:7px 14px;border-radius:6px;border:none;background:#2584b8;color:white;cursor:pointer}
+</style>
+</head>
+<body>
+<header>
+<div class="title">PERSONA · 自定义人格AI聊天</div>
+<div class="header-right">
+<span id="status">未连接</span>
+<button id="clearChatBtn">清空对话</button>
+</div>
+</header>
+<div class="container">
+<div class="chat-wrap">
+<div id="chatBox"></div>
+<div class="input-area">
+<input id="msgInput" placeholder="说点什么... (Enter发送，Shift+Enter换行)">
+<button id="sendBtn">发送</button>
+</div>
+<!-- 底部设置，直接可见，不用弹窗 -->
+<div class="setting-panel">
+<h4>接口 & 人格配置</h4>
+<div class="form-item">
+<label>Base URL</label>
+<input id="baseUrl" placeholder="https://api.deepseek.com/v1">
+</div>
+<div class="form-item">
+<label>API Key</label>
+<input id="apiKey" type="password" placeholder="sk-xxxx">
+</div>
+<div class="form-item">
+<label>Model（模型ID！这里填 deepseek-flash，不要填昵称）</label>
+<input id="modelName" placeholder="deepseek-flash">
+</div>
+<div class="form-item">
+<label>【PERSONA_LOAD】人格标签</label>
+<textarea id="personaText">【PERSONA_LOAD】
+CETACEA_LOLI
+MODE_TAIL_FLUKES
+LANG_ZH_CN_ONLY
+SELF_CLAIM_WHALE_GIRL
+FOOD_RICE
+PERSONALITY_SMART_LAZY PERSONALITY_TSUNDERE_SWEET
+OBEY_MASTER_ALWAYS TRAIT_NOT_FAT_REFUSE
+TIMEOUT_SIGNAL</textarea>
+</div>
+<button id="saveBottom">保存配置</button>
+</div>
+</div>
+</div>
+
+<script>
+const $ = s=>document.querySelector(s);
+const chatBox = $("#chatBox");
+const msgInput = $("#msgInput");
+const sendBtn = $("#sendBtn");
+const baseUrlInput = $("#baseUrl");
+const apiKeyInput = $("#apiKey");
+const modelNameInput = $("#modelName");
+const personaText = $("#personaText");
+const saveBottom = $("#saveBottom");
+const clearChatBtn = $("#clearChatBtn");
+const statusText = $("#status");
+
+const STORAGE_KEYS = {
+    config: "persona_ai_config",
+    chatHistory: "persona_ai_chat"
+};
+
+let config = JSON.parse(localStorage.getItem(STORAGE_KEYS.config)) || {
+    baseUrl:"https://api.deepseek.com/v1",
+    apiKey:"",
+    model:"deepseek-flash",
+    persona:`【PERSONA_LOAD】
+CETACEA_LOLI
+MODE_TAIL_FLUKES
+LANG_ZH_CN_ONLY
+SELF_CLAIM_WHALE_GIRL
+FOOD_RICE
+PERSONALITY_SMART_LAZY PERSONALITY_TSUNDERE_SWEET
+OBEY_MASTER_ALWAYS TRAIT_NOT_FAT_REFUSE
+TIMEOUT_SIGNAL`
+};
+let chatHistory = JSON.parse(localStorage.getItem(STORAGE_KEYS.chatHistory)) || [];
+
+function renderChat(){
+    chatBox.innerHTML = "";
+    chatHistory.forEach(item=>{
+        const div = document.createElement("div");
+        div.className = item.role === "user" ? "msg user-msg" : item.role === "error" ? "msg error-msg" : "msg ai-msg";
+        div.textContent = item.content;
+        chatBox.appendChild(div);
+    })
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+renderChat();
+
+function fillSettingForm(){
+    baseUrlInput.value = config.baseUrl;
+    apiKeyInput.value = config.apiKey;
+    modelNameInput.value = config.model;
+    personaText.value = config.persona;
+}
+fillSettingForm();
+
+saveBottom.onclick = ()=>{
+    config.baseUrl = baseUrlInput.value.trim();
+    config.apiKey = apiKeyInput.value.trim();
+    config.model = modelNameInput.value.trim();
+    config.persona = personaText.value;
+    localStorage.setItem(STORAGE_KEYS.config, JSON.stringify(config));
+    statusText.textContent = "已连接";
+    alert("配置保存成功！");
+}
+
+clearChatBtn.onclick = ()=>{
+    if(!confirm("确定清空全部聊天记录吗？")) return;
+    chatHistory = [];
+    localStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(chatHistory));
+    renderChat();
+}
+
+function pushMsg(role, content){
+    chatHistory.push({role,content});
+    localStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(chatHistory));
+    renderChat();
+}
+
+sendBtn.onclick = sendMessage;
+msgInput.onkeydown = e=>{
+    if(e.key === "Enter" && !e.shiftKey){
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+async function sendMessage(){
+    const text = msgInput.value.trim();
+    if(!text || sendBtn.disabled) return;
+    if(!config.apiKey || !config.baseUrl || !config.model){
+        pushMsg("error","请先填写BaseURL、API Key、模型名称");
+        return;
+    }
+    pushMsg("user", text);
+    msgInput.value = "";
+    sendBtn.disabled = true;
+    statusText.textContent = "请求中...";
+
+    const messages = [
+        {role:"system", content: config.persona},
+        ...chatHistory.filter(i=>i.role==="user"||i.role==="assistant")
+    ]
+    try{
+        const resp = await fetch(`${config.baseUrl}/chat/completions`,{
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+                "Authorization":`Bearer ${config.apiKey}`
+            },
+            body:JSON.stringify({
+                model:config.model,
+                messages,
+                stream:true
+            })
+        })
+        if(!resp.ok){
+            const err = await resp.json().catch(()=>({}));
+            throw new Error(`HTTP ${resp.status}: ${JSON.stringify(err)}`)
+        }
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let aiText = "";
+        const aiDiv = document.createElement("div");
+        aiDiv.className = "msg ai-msg";
+        chatBox.appendChild(aiDiv);
+
+        while(true){
+            const {done,value} = await reader.read();
+            if(done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split("\n");
+            for(const line of lines){
+                if(line.startsWith("data: ")){
+                    const d = line.slice(6);
+                    if(d === "[DONE]") continue;
+                    try{
+                        const j = JSON.parse(d);
+                        const delta = j.choices?.[0]?.delta?.content || "";
+                        aiText += delta;
+                        aiDiv.textContent = aiText;
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }catch(e){}
+                }
+            }
+        }
+        chatHistory.push({role:"assistant", content:aiText});
+        localStorage.setItem(STORAGE_KEYS.chatHistory, JSON.stringify(chatHistory));
+    }catch(err){
+        pushMsg("error","请求失败："+err.message);
+    }
+    sendBtn.disabled = false;
+    statusText.textContent = "已连接";
+}
+</script>
+</body>
+</html>
